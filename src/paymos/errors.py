@@ -29,7 +29,7 @@ class ApiError(PaymosError):
         self.headers = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
         try:
             parsed = json.loads(body) if body else None
-            self.problem: dict[str, Any] | None = parsed if isinstance(parsed, dict) else None
+            self.problem: dict[str, Any] | None = parsed if _is_canonical_problem(parsed, status) else None
         except json.JSONDecodeError:
             self.problem = None
         detail = self.detail or self.code or (self.problem or {}).get("title") or body or "empty response"
@@ -42,17 +42,11 @@ class ApiError(PaymosError):
 
     @property
     def code(self) -> str:
-        if self.errors and isinstance(self.errors[0], dict):
-            return str(self.errors[0].get("code") or "")
         return str((self.problem or {}).get("code") or "")
 
     @property
     def field(self) -> str | None:
-        value = (
-            self.errors[0].get("field")
-            if self.errors and isinstance(self.errors[0], dict)
-            else (self.problem or {}).get("field")
-        )
+        value = (self.problem or {}).get("field")
         return str(value) if value is not None else None
 
     @property
@@ -60,8 +54,6 @@ class ApiError(PaymosError):
         value = (self.problem or {}).get("detail")
         if value:
             return str(value)
-        if self.errors and isinstance(self.errors[0], dict):
-            return str(self.errors[0].get("message") or "")
         return ""
 
     @property
@@ -123,3 +115,16 @@ def api_error(status: int, body: str, headers: Mapping[str, str] | None = None) 
         503: UnavailableError,
     }.get(status, ServerError if status >= 500 else ApiError)
     return error_type(status, body, headers)
+
+
+def _is_canonical_problem(value: Any, status: int) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("type"), str)
+        and isinstance(value.get("title"), str)
+        and isinstance(value.get("status"), int)
+        and not isinstance(value.get("status"), bool)
+        and value["status"] == status
+        and isinstance(value.get("detail"), str)
+        and isinstance(value.get("code"), str)
+    )
