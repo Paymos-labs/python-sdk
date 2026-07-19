@@ -15,6 +15,7 @@ from paymos import (
     authorization_header,
     build_query,
 )
+from paymos.errors import api_error
 
 CONTRACT = json.loads((pathlib.Path(__file__).parents[1] / "conformance" / "contract.json").read_text())
 
@@ -98,6 +99,14 @@ class ConformanceTests(unittest.TestCase):
         self.assertEqual(
             {"project_id": "prj_1", "amount": "10.00", "currency": "USD", "external_order_id": "order_1"}, create_body
         )
+
+    def test_problem_details_uses_top_level_code(self):
+        vector = CONTRACT["vectors"]["problem_details"]["multi"]
+        error = api_error(400, json.dumps(vector))
+
+        self.assertEqual("validation_failed", error.code)
+        self.assertIsNone(error.field)
+        self.assertEqual("field_required", error.errors[0]["code"])
 
     def test_retry_and_error_contract(self):
         responses = [Response(429, '{"detail":"slow down"}', {"Retry-After": "0"}), Response(200, "{}", {})]
