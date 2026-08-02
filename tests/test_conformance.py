@@ -6,6 +6,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src"))
 
 from paymos import (
+    VERSION,
     Paymos,
     PaymosError,
     RateLimitError,
@@ -94,7 +95,7 @@ class ConformanceTests(unittest.TestCase):
             ],
             [(method, url.removeprefix("https://api.paymos.io")) for method, url, _body, _agent in calls],
         )
-        self.assertTrue(all(call[3] == "paymos-python/1.0.0" for call in calls))
+        self.assertTrue(all(call[3] == f"paymos-python/{VERSION}" for call in calls))
         create_body = json.loads(calls[1][2])
         self.assertEqual(
             {"project_id": "prj_1", "amount": "10.00", "currency": "USD", "external_order_id": "order_1"}, create_body
