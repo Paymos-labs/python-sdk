@@ -1,8 +1,10 @@
 # Paymos Python SDK
 
 Official Python 3.10+ client for the Paymos Merchant API. It includes HMAC request
-signing, invoices, withdrawals, balances, bounded cursor iterators, structured
-errors, safe retries, and raw-body webhook verification.
+signing, invoices, withdrawals, balances, static per-customer wallets and their
+deposit feed,
+bounded cursor iterators, structured errors, safe retries, and raw-body webhook
+verification.
 
 ```bash
 pip install paymos-sdk
@@ -31,6 +33,34 @@ for invoice in paymos.invoices.iterate(status=["paid", "paid_over"], max_pages=1
     print(invoice["invoice_id"])
 ```
 
+A payment channel is one payer's reusable set of deposit addresses. Create it,
+read its rails, then poll the confirmed-deposit feed and persist the cursor:
+
+```python
+channel = paymos.payment_channels.create(project_id="prj_...", external_id="customer_42")
+for rail in channel["networks"]:
+    print(rail["network"], rail["status"], rail.get("address", "not provisioned yet"))
+
+feed = paymos.payment_channel_deposits.read(cursor=saved_cursor, limit=100)
+for deposit in feed["items"]:
+    credit(deposit)
+save_cursor(feed["next_cursor"])
+```
+
+Four things that bite a caller who guesses. Repeating the same `external_id`
+returns the **same** channel — `200` instead of `201`, and both bodies are a
+channel, so calling this on every checkout is safe: a repeat is not a duplicate
+and not an error. A rail's `address` is absent until that rail finishes
+provisioning and never changes once it appears, so absent means "not yet", not
+"no address". An absent `minimum_deposit` means "we cannot quote a minimum right
+now", never "there is no minimum" — reading it as zero is how a merchant accepts
+a deposit that lands below the live minimum and is never credited. And
+`next_cursor` is never empty, not even on a page with no items: store it and
+resume from it, and never loop until it is falsy the way `iterate()` ends a
+list, because that loop either spins forever or stops on the first quiet page
+and leaves reconciliation silently behind. `confirmed_from` is the first poll's
+lower bound only; afterwards the stored cursor is the resume mechanism.
+
 API failures raise typed subclasses of `ApiError` and preserve the HTTP status,
 problem details, field, error code, headers, and `Retry-After` value.
 
@@ -43,6 +73,27 @@ event = WebhookVerifier(os.environ["PAYMOS_WEBHOOK_SECRET"]).construct_event(
     request.headers["X-Webhook-Signature"], request.get_data()
 )
 ```
+
+The three `payment_channel.deposit.*` events each carry a full payment-channel deposit as
+their `data`. `construct_event` returns it untyped, so bind it to `PaymentChannelDeposit`
+yourself:
+
+```python
+from typing import cast
+
+from paymos import PaymentChannelDeposit
+
+if event["event_type"] == "payment_channel.deposit.confirmed":
+    deposit = cast(PaymentChannelDeposit, event["data"])
+    if deposit["is_final"]:
+        credit(deposit["payment_channel_external_id"], deposit["net"])  # idempotent by event["event_id"]
+```
+
+`confirming` and `reorged` are advisory and may arrive out of order — a `confirming` can
+land after the `confirmed` for the same deposit, and a `reorged` can be superseded by a
+later `confirmed`. Credit only on `payment_channel.deposit.confirmed` with `is_final` true,
+and never let an advisory event regress a deposit already known to be confirmed: crediting
+on `confirming` releases goods against money a reorg can still take back.
 
 Never use the API secret in browser or mobile code. Full documentation:
 https://paymos.io/docs/server-sdks
