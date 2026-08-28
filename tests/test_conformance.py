@@ -40,6 +40,21 @@ class ConformanceTests(unittest.TestCase):
         self.assertEqual(
             get["query"], build_query({"status": ["paid_over", "paid"], "project_id": "prj/a", "limit": 50})
         )
+        # An absent body signs an EMPTY last segment, never sha256(""). This vector is a POST, so
+        # an SDK that shortcuts on the method ("only GET is empty") fails here.
+        empty = CONTRACT["vectors"]["post_empty_body_signing"]
+        self.assertEqual(
+            empty["authorization"],
+            authorization_header(
+                empty["api_key"],
+                empty["api_secret"],
+                empty["timestamp"],
+                empty["method"],
+                empty["path"],
+                empty["query"],
+                empty["body"],
+            ),
+        )
 
     def test_webhook_vector(self):
         vector = CONTRACT["vectors"]["webhook"]

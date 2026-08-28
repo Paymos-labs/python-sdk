@@ -16,7 +16,13 @@ from .models import (
     InvoiceListItem,
     InvoicePage,
     InvoiceStatus,
+    PaymentChannel,
+    PaymentChannelDeposit,
+    PaymentChannelDepositFeedPage,
+    PaymentChannelPage,
+    PaymentChannelStatus,
     ServerTime,
+    SimulateDepositStage,
     Withdrawal,
     WithdrawalPage,
     WithdrawalStatus,
@@ -73,6 +79,8 @@ class Paymos:
         self.transport, self.clock, self.sleep = transport, clock, sleep
         self.invoices = Invoices(self)
         self.withdrawals = Withdrawals(self)
+        self.payment_channels = PaymentChannels(self)
+        self.payment_channel_deposits = PaymentChannelDeposits(self)
         self.balances = Balances(self)
         self.system = System(self)
 
@@ -311,6 +319,150 @@ class Withdrawals:
             self.client.request(
                 "POST", f"/v1/sandbox/withdrawals/{encode_path_segment(withdrawal_id)}/simulate-completion"
             ),
+        )
+
+
+class PaymentChannels:
+    def __init__(self, client: Paymos):
+        self.client = client
+
+    def create(self, *, project_id: str, external_id: str) -> PaymentChannel:
+        """Create — or fetch.
+
+        The same project plus external id answers 200 with the channel that already exists
+        instead of 201 with a duplicate. Both bodies are a channel, so a caller never inspects
+        the status: calling this on every checkout is safe.
+        """
+        return cast(
+            PaymentChannel,
+            self.client.request(
+                "POST",
+                "/v1/payment-channels",
+                {"project_id": project_id, "external_id": external_id},
+            ),
+        )
+
+    def get(self, payment_channel_id: str) -> PaymentChannel:
+        return cast(
+            PaymentChannel,
+            self.client.request("GET", f"/v1/payment-channels/{encode_path_segment(payment_channel_id)}"),
+        )
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        status: Sequence[PaymentChannelStatus] | None = None,
+        external_id: str | None = None,
+        project_id: str | None = None,
+    ) -> PaymentChannelPage:
+        filters = _filters(
+            limit=limit,
+            cursor=cursor,
+            status=status,
+            external_id=external_id,
+            project_id=project_id,
+        )
+        return cast(PaymentChannelPage, self.client.request("GET", "/v1/payment-channels", query=build_query(filters)))
+
+    def iterate(
+        self,
+        max_pages: int = 100,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        status: Sequence[PaymentChannelStatus] | None = None,
+        external_id: str | None = None,
+        project_id: str | None = None,
+    ) -> Iterator[PaymentChannel]:
+        filters = _filters(
+            limit=limit,
+            cursor=cursor,
+            status=status,
+            external_id=external_id,
+            project_id=project_id,
+        )
+        yield from _iterate(self.list, max_pages, filters)
+
+    def block(self, payment_channel_id: str) -> PaymentChannel:
+        return cast(
+            PaymentChannel,
+            self.client.request("POST", f"/v1/payment-channels/{encode_path_segment(payment_channel_id)}/block"),
+        )
+
+    def unblock(self, payment_channel_id: str) -> PaymentChannel:
+        return cast(
+            PaymentChannel,
+            self.client.request("POST", f"/v1/payment-channels/{encode_path_segment(payment_channel_id)}/unblock"),
+        )
+
+    def simulate_deposit(
+        self,
+        payment_channel_id: str,
+        *,
+        amount: str,
+        currency: str,
+        network: str,
+        stage: SimulateDepositStage | None = None,
+    ) -> PaymentChannelDeposit:
+        """Sandbox only — a production credential gets an error, not a deposit.
+
+        ``network`` is required. ``stage`` is omitted from the body entirely when unset, which
+        the API reads as ``confirmed``; sending it empty or null is an unknown value.
+        """
+        if stage is not None and stage not in {"confirming", "reorged", "confirmed"}:
+            raise ValueError("Invalid simulation stage.")
+        payload: dict[str, object] = {"amount": amount, "currency": currency, "network": network}
+        _optional(payload, "stage", stage)
+        return cast(
+            PaymentChannelDeposit,
+            self.client.request(
+                "POST",
+                f"/v1/sandbox/payment-channels/{encode_path_segment(payment_channel_id)}/simulate-deposit",
+                payload,
+            ),
+        )
+
+
+class PaymentChannelDeposits:
+    def __init__(self, client: Paymos):
+        self.client = client
+
+    def get(self, deposit_id: str) -> PaymentChannelDeposit:
+        return cast(
+            PaymentChannelDeposit,
+            self.client.request("GET", f"/v1/payment-channel-deposits/{encode_path_segment(deposit_id)}"),
+        )
+
+    def read(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        project_id: str | None = None,
+        payment_channel_id: str | None = None,
+        confirmed_from: int | None = None,
+    ) -> PaymentChannelDepositFeedPage:
+        """Read ONE page of the confirmed-deposit feed.
+
+        Deliberately not called ``list`` and deliberately without an ``iterate`` companion: the
+        feed has no last page, and a helper that loops until the cursor is empty would either
+        spin forever or stop on the first quiet page and leave a merchant's reconciliation
+        silently behind. Store ``next_cursor`` — it is always present, even on an empty page —
+        and pass it back on the next poll. ``confirmed_from`` is the initial-sync lower bound
+        for the very first call only; it is not how you resume.
+        """
+        filters = _filters(
+            limit=limit,
+            cursor=cursor,
+            project_id=project_id,
+            payment_channel_id=payment_channel_id,
+            confirmed_from=confirmed_from,
+        )
+        return cast(
+            PaymentChannelDepositFeedPage,
+            self.client.request("GET", "/v1/payment-channel-deposits", query=build_query(filters)),
         )
 
 
