@@ -7,6 +7,7 @@ from .errors import (
     GoneError,
     NotFoundError,
     PaymosError,
+    PermissionError,
     RateLimitError,
     ServerError,
     SignatureMismatchError,
@@ -45,6 +46,7 @@ from .webhooks import WebhookVerifier
 __all__ = [
     "ApiError",
     "AuthenticationError",
+    "PermissionError",
     "ConfigurationError",
     "ConflictError",
     "GoneError",

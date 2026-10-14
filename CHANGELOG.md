@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-14
+
+- Make the SDK CI tier green
+- Fix invoice-late-payment audit findings (tasks 4.1-4.8)
+- feat(invoices): accept full late payments without reopening invoices
+- fix(sdk-conformance): восемь копий контракта разошлись с каноном — 403 снова permission
+- fix(sdk): HTTPS обязателен, а 403 перестал притворяться ошибкой ключа
+
+- **403 is no longer reported as an authentication failure.** `PermissionError` (a subclass of `AuthenticationError`, so existing `except` blocks keep working) now carries every 403 — wrong key type, blocked IP, or plain account state such as `whitelist_required`.
+- **Base URL must use HTTPS.** Plain HTTP is accepted only against a loopback host, which is what a local integration test points at. The API secret signs every request, so a plaintext base URL put that credential on the wire.
+
 ## [1.3.0] - 2026-08-28
 
 - release: the changelog rot had a cause, and it was not the one I named

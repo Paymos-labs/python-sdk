@@ -98,6 +98,9 @@ class Invoice(InvoiceRequired, total=False):
     payment: Payment
     expires_at: int
     completed_at: int
+    # invoice-late-payment: the late-payment fact — Unix seconds; None while the invoice
+    # has no late mark — the server omits the field then. The status above keeps its terminal meaning.
+    paid_late_at: int | None
 
 
 class InvoiceListItemRequired(TypedDict):
@@ -117,6 +120,8 @@ class InvoiceListItem(InvoiceListItemRequired, total=False):
     network: str
     expires_at: int
     completed_at: int
+    # invoice-late-payment: additive late mark, Unix seconds; None while there is no mark (field omitted).
+    paid_late_at: int | None
 
 
 class InvoicePage(TypedDict):

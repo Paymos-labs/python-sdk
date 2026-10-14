@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .errors import ConfigurationError, PaymosError, api_error
@@ -55,6 +56,23 @@ def _default_transport(
         return Response(error.code, error.read().decode("utf-8"), dict(error.headers.items()))
 
 
+def _validate_base_url(value: str) -> str:
+    """Reject a base URL that would put the API secret on the wire in the clear.
+
+    The secret signs every request, so the scheme of the base URL decides whether that
+    credential is readable in transit. HTTPS is the only acceptable answer in production;
+    plain HTTP is allowed solely against a loopback host, which is what a local integration
+    test points at. Mirrors the Rust SDK's validate_base_url — same rule, same wording, in
+    every language.
+    """
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    loopback = host in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and loopback):
+        raise ConfigurationError("base_url must use HTTPS (HTTP is allowed only for loopback tests).")
+    return value.rstrip("/")
+
+
 class Paymos:
     def __init__(
         self,
@@ -74,7 +92,7 @@ class Paymos:
         if timeout <= 0 or max_retries < 0 or base_delay < 0:
             raise ConfigurationError("timeout, max_retries, and base_delay are invalid.")
         self.api_key, self.api_secret = api_key, api_secret
-        self.base_url, self.timeout = base_url.rstrip("/"), timeout
+        self.base_url, self.timeout = _validate_base_url(base_url), timeout
         self.max_retries, self.base_delay = max_retries, base_delay
         self.transport, self.clock, self.sleep = transport, clock, sleep
         self.invoices = Invoices(self)
@@ -222,7 +240,7 @@ class Invoices:
         )
 
     def simulate_payment(self, invoice_id: str, stage: str) -> Invoice:
-        if stage not in {"paid", "overpaid", "underpay", "cancel"}:
+        if stage not in {"paid", "overpaid", "underpay", "cancel", "paid_late"}:
             raise ValueError("Invalid simulation stage.")
         return cast(
             Invoice,

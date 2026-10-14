@@ -97,3 +97,23 @@ on `confirming` releases goods against money a reorg can still take back.
 
 Never use the API secret in browser or mobile code. Full documentation:
 https://paymos.io/docs/server-sdks
+
+## 401 and 403 are different problems
+
+A **401** means the credential is absent, malformed or unverifiable — fix the key or the signing
+clock, and stop retrying.
+
+A **403** means the credential was accepted and something else refused. It covers two very
+different situations:
+
+- **the key is wrong for this call** — `payout_key_required`, `payment_key_required`,
+  `forbidden`;
+- **the key is fine, the account or project state says no** — `whitelist_required`,
+  `merchant_suspended`, `widget_inactive`, `terminal_not_enabled`, `not_sandbox`.
+
+A customer entering a payout address that is not whitelisted yet is the second kind: nothing is
+wrong with your credentials, and paging the on-call engineer about them is the wrong move. Always
+switch on the error `code` before deciding what to do.
+
+`PermissionError` subclasses `AuthenticationError`, so `except AuthenticationError` written
+before this split keeps catching 403.
