@@ -69,6 +69,25 @@ class ConformanceTests(unittest.TestCase):
             )
         )
 
+    def test_signed_ton_webhook_raw_and_friendly_v1_preserve_fields(self):
+        fixtures = CONTRACT["vectors"]["ton_webhooks"]
+        self.assertEqual(8, len(fixtures["vectors"]))
+        verifier = WebhookVerifier(fixtures["secret"])
+        for vector in fixtures["vectors"]:
+            with self.subTest(vector=vector["name"]):
+                event = verifier.construct_event(vector["header"], vector["raw_body"], fixtures["now"])
+                self.assertEqual(vector["event_id"], event["event_id"])
+                self.assertEqual(vector["event_type"], event["event_type"])
+                self.assertEqual(1, vector["version"])
+                self.assertEqual(vector["version"], event["version"])
+                self.assertEqual(fixtures["now"], event["occurred_at"])
+                for expected in vector["expect"]:
+                    value = event["data"]
+                    for part in expected["path"]:
+                        value = value[part]
+                    self.assertEqual(expected["value"], value)
+                self.assertFalse(verifier.verify(vector["header"], vector["raw_body"] + " ", fixtures["now"]))
+
     def test_complete_resource_routes(self):
         calls = []
 
