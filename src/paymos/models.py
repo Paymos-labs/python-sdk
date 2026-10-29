@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import sys
+from collections.abc import Sequence
 from typing import Literal, TypeAlias, TypedDict
+
+if sys.version_info >= (3, 13):
+    from typing import ReadOnly
+else:
+    from typing_extensions import ReadOnly
 
 InvoiceStatus: TypeAlias = Literal[
     "awaiting_client",
@@ -22,6 +29,7 @@ WithdrawalStatus: TypeAlias = Literal[
     "failed",
     "cancelled",
 ]
+RefundMode: TypeAlias = Literal["full", "overpayment"]
 PaymentChannelStatus: TypeAlias = Literal["active", "blocked", "provisioning"]
 PaymentChannelNetworkStatus: TypeAlias = Literal["provisioning", "active"]
 PaymentChannelDepositStatus: TypeAlias = Literal["confirming", "reorged", "confirmed"]
@@ -154,6 +162,38 @@ class Withdrawal(WithdrawalRequired, total=False):
 class WithdrawalPage(TypedDict):
     items: list[Withdrawal]
     next_cursor: str | None
+
+
+class RefundRequired(TypedDict):
+    withdrawal_id: ReadOnly[str]
+    invoice_id: ReadOnly[str]
+    mode: ReadOnly[RefundMode]
+    external_order_id: ReadOnly[str]
+    status: ReadOnly[WithdrawalStatus]
+    is_final: ReadOnly[bool]
+    is_test: ReadOnly[bool]
+    amount: ReadOnly[str]
+    currency: ReadOnly[str]
+    network: ReadOnly[str]
+    destination_address: ReadOnly[str]
+    first_sender: ReadOnly[str]
+    created_at: ReadOnly[int]
+
+
+class Refund(RefundRequired, total=False):
+    type: ReadOnly[str]
+    project_id: ReadOnly[str]
+    fee: ReadOnly[str]
+    tx_hash: ReadOnly[str]
+    explorer_url: ReadOnly[str]
+    completed_at: ReadOnly[int]
+    failed_at: ReadOnly[int]
+    cancelled_at: ReadOnly[int]
+
+
+class RefundPage(TypedDict):
+    items: ReadOnly[Sequence[Refund]]
+    next_cursor: ReadOnly[str | None]
 
 
 class PaymentChannelTokenRequired(TypedDict):

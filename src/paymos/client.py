@@ -22,6 +22,9 @@ from .models import (
     PaymentChannelDepositFeedPage,
     PaymentChannelPage,
     PaymentChannelStatus,
+    Refund,
+    RefundMode,
+    RefundPage,
     ServerTime,
     SimulateDepositStage,
     Withdrawal,
@@ -97,6 +100,7 @@ class Paymos:
         self.transport, self.clock, self.sleep = transport, clock, sleep
         self.invoices = Invoices(self)
         self.withdrawals = Withdrawals(self)
+        self.refunds = Refunds(self)
         self.payment_channels = PaymentChannels(self)
         self.payment_channel_deposits = PaymentChannelDeposits(self)
         self.balances = Balances(self)
@@ -338,6 +342,73 @@ class Withdrawals:
                 "POST", f"/v1/sandbox/withdrawals/{encode_path_segment(withdrawal_id)}/simulate-completion"
             ),
         )
+
+
+class Refunds:
+    def __init__(self, client: Paymos):
+        self.client = client
+
+    def create(self, *, invoice_id: str, mode: RefundMode, external_order_id: str) -> Refund:
+        return cast(
+            Refund,
+            self.client.request(
+                "POST",
+                "/v1/refunds",
+                {"invoice_id": invoice_id, "mode": mode, "external_order_id": external_order_id},
+            ),
+        )
+
+    def simulate(self, refund_id: str, status: str) -> Refund:
+        return cast(
+            Refund,
+            self.client.request(
+                "POST", f"/v1/sandbox/refunds/{encode_path_segment(refund_id)}/simulate", {"status": status}
+            ),
+        )
+
+    def get(self, refund_id: str) -> Refund:
+        return cast(Refund, self.client.request("GET", f"/v1/refunds/{encode_path_segment(refund_id)}"))
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        invoice_id: str | None = None,
+        status: Sequence[WithdrawalStatus] | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+    ) -> RefundPage:
+        filters = _filters(
+            limit=limit,
+            cursor=cursor,
+            invoice_id=invoice_id,
+            status=status,
+            created_from=created_from,
+            created_to=created_to,
+        )
+        return cast(RefundPage, self.client.request("GET", "/v1/refunds", query=build_query(filters)))
+
+    def iterate(
+        self,
+        max_pages: int = 100,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        invoice_id: str | None = None,
+        status: Sequence[WithdrawalStatus] | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+    ) -> Iterator[Refund]:
+        filters = _filters(
+            limit=limit,
+            cursor=cursor,
+            invoice_id=invoice_id,
+            status=status,
+            created_from=created_from,
+            created_to=created_to,
+        )
+        yield from _iterate(self.list, max_pages, filters)
 
 
 class PaymentChannels:
