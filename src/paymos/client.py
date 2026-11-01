@@ -162,7 +162,6 @@ class Invoices:
         currency: str,
         external_order_id: str,
         network: str | None = None,
-        allow_multiple_payments: bool | None = None,
         customer_fee_percent: int | None = None,
         client_id: str | None = None,
     ) -> Invoice:
@@ -173,7 +172,6 @@ class Invoices:
             "external_order_id": external_order_id,
         }
         _optional(payload, "network", network)
-        _optional(payload, "allow_multiple_payments", allow_multiple_payments)
         _optional(payload, "customer_fee_percent", customer_fee_percent)
         _optional(payload, "client_id", client_id)
         return cast(Invoice, self.client.request("POST", "/v1/invoices", payload))
