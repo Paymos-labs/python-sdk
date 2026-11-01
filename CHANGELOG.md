@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-01
+
+- refactor(invoices): remove the multiple-payment toggle
+
+- **403 is no longer reported as an authentication failure.** `PermissionError` (a subclass of `AuthenticationError`, so existing `except` blocks keep working) now carries every 403 — wrong key type, blocked IP, or plain account state such as `whitelist_required`.
+- **Base URL must use HTTPS.** Plain HTTP is accepted only against a loopback host, which is what a local integration test points at. The API secret signs every request, so a plaintext base URL put that credential on the wire.
+
 ## [1.5.0] - 2026-10-29
 
 - fix(sdk): preserve current refund contracts in TON conformance
