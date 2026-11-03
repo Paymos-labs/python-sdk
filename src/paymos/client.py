@@ -356,16 +356,18 @@ class Refunds:
             ),
         )
 
+    def get(self, refund_id: str) -> Refund:
+        return cast(Refund, self.client.request("GET", f"/v1/refunds/{encode_path_segment(refund_id)}"))
+
     def simulate(self, refund_id: str, status: str) -> Refund:
+        if not refund_id.strip() or status not in {"completed", "failed", "cancelled"}:
+            raise ValueError("A refund ID and terminal simulation status are required.")
         return cast(
             Refund,
             self.client.request(
                 "POST", f"/v1/sandbox/refunds/{encode_path_segment(refund_id)}/simulate", {"status": status}
             ),
         )
-
-    def get(self, refund_id: str) -> Refund:
-        return cast(Refund, self.client.request("GET", f"/v1/refunds/{encode_path_segment(refund_id)}"))
 
     def list(
         self,

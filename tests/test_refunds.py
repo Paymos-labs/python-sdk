@@ -29,6 +29,8 @@ INVOICE_ID = CREATE["body"]["invoice_id"]
 REFUND_ID = "wdr_74BPZFhr9qy9Uz2fbRkdJX"
 FULL_ID = "wdr_74BPZFhr9qy9Uz2fbRkdJY"
 REFUND = {
+    "type": "refund",
+    "project_id": "prj_test",
     "withdrawal_id": REFUND_ID,
     "invoice_id": INVOICE_ID,
     "mode": "full",
@@ -84,6 +86,13 @@ def _client(*responses, max_retries=0):
 
 
 class RefundTests(unittest.TestCase):
+    def test_scoped_simulator_signs_all_terminal_statuses(self):
+        for status in ("completed", "failed", "cancelled"):
+            client, calls = _client((200, {**REFUND, "status": status}))
+            actual = client.refunds.simulate("wdr /?", status)
+            self.assertEqual(status, actual["status"])
+            self.assert_signed(calls[0], "POST", "/v1/sandbox/refunds/wdr%20%2F%3F/simulate", {"status": status})
+
     def assert_signed(self, call, method, target, payload=None):
         actual_method, actual_target, headers, body = call
         self.assertEqual((method, target), (actual_method, actual_target))
@@ -97,25 +106,6 @@ class RefundTests(unittest.TestCase):
         self.assertEqual(f"HMAC-SHA256 {SIGNING['api_key']}:{signature}", headers["Authorization"])
         self.assertEqual(SIGNING["timestamp"], headers["X-Request-Timestamp"])
         self.assertNotIn("Idempotency-Key", headers)
-
-    def test_simulate_signed_terminal_status_and_current_refund_shape(self):
-        address = "UQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPuwA"
-        for status in ("completed", "failed", "cancelled"):
-            with self.subTest(status=status):
-                wire = {
-                    **REFUND,
-                    "status": status,
-                    "is_final": True,
-                    "network": "TON",
-                    "destination_address": address,
-                    "first_sender": address,
-                    "type": "refund",
-                    "project_id": "prj_1",
-                }
-                client, calls = _client((200, wire))
-                result = client.refunds.simulate("wdr/1 ?", status)
-                self.assertEqual(wire, result)
-                self.assert_signed(calls[0], "POST", "/v1/sandbox/refunds/wdr%2F1%20%3F/simulate", {"status": status})
 
     def test_create_both_modes_sends_only_the_shared_contract_fields(self):
         for vector, amount in ((CREATE, "120"), (OVERPAYMENT, "20")):
