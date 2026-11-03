@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-03
+
+- fix(sdk): resolve preflight lint and conformance vector count for autorelease
+- feat(refunds): finalize clean merchant refunds spec, SDKs, CMS plugins, and targeted test scripts
+- wip: snapshot shared working tree before merging main
+- fix(merge): keep both sides for 126 conflicting files (union / semantic JSON merge); Balance.razor keeps ClickToCopy ID column
+- wip(refunds): merchant refund plugin work (CMS adapters, PHP SDK, tests) - unverified WIP snapshot
+
+- **403 is no longer reported as an authentication failure.** `PermissionError` (a subclass of `AuthenticationError`, so existing `except` blocks keep working) now carries every 403 — wrong key type, blocked IP, or plain account state such as `whitelist_required`.
+- **Base URL must use HTTPS.** Plain HTTP is accepted only against a loopback host, which is what a local integration test points at. The API secret signs every request, so a plaintext base URL put that credential on the wire.
+
 ## [1.5.1] - 2026-11-01
 
 - refactor(invoices): remove the multiple-payment toggle

@@ -69,16 +69,19 @@ class ConformanceTests(unittest.TestCase):
             )
         )
 
-    def test_signed_ton_webhook_raw_and_friendly_v1_preserve_fields(self):
+    def test_signed_ton_webhook_versions_preserve_fields(self):
         fixtures = CONTRACT["vectors"]["ton_webhooks"]
-        self.assertEqual(8, len(fixtures["vectors"]))
+        self.assertEqual(16, len(fixtures["vectors"]))
+        self.assertEqual(16, len({vector["name"] for vector in fixtures["vectors"]}))
+        self.assertEqual({1, 2}, {vector["version"] for vector in fixtures["vectors"]})
         verifier = WebhookVerifier(fixtures["secret"])
         for vector in fixtures["vectors"]:
             with self.subTest(vector=vector["name"]):
+                self.assertEqual(2 if vector["name"].endswith("_v2") else 1, vector["version"])
+                self.assertTrue(verifier.verify(vector["header"], vector["raw_body"], fixtures["now"]))
                 event = verifier.construct_event(vector["header"], vector["raw_body"], fixtures["now"])
                 self.assertEqual(vector["event_id"], event["event_id"])
                 self.assertEqual(vector["event_type"], event["event_type"])
-                self.assertEqual(1, vector["version"])
                 self.assertEqual(vector["version"], event["version"])
                 self.assertEqual(fixtures["now"], event["occurred_at"])
                 for expected in vector["expect"]:
@@ -87,6 +90,28 @@ class ConformanceTests(unittest.TestCase):
                         value = value[part]
                     self.assertEqual(expected["value"], value)
                 self.assertFalse(verifier.verify(vector["header"], vector["raw_body"] + " ", fixtures["now"]))
+
+    def test_refund_keeps_legacy_optional_fields_without_weakening_identity(self):
+        from paymos.models import Refund
+
+        self.assertTrue({"type", "project_id"}.issubset(Refund.__optional_keys__))
+        self.assertTrue({"type", "project_id"}.isdisjoint(Refund.__required_keys__))
+        self.assertTrue(
+            {"withdrawal_id", "invoice_id", "mode", "external_order_id", "amount"}.issubset(Refund.__required_keys__)
+        )
+
+    def test_invalid_refund_simulation_does_not_call_transport(self):
+        calls = []
+
+        def transport(*args):
+            calls.append(args)
+            return Response(200, "{}", {})
+
+        client = Paymos("pk", "sk", transport=transport)
+        for status in ("", "created", "COMPLETED"):
+            with self.assertRaises(ValueError):
+                client.refunds.simulate("wdr_1", status)
+        self.assertEqual([], calls)
 
     def test_complete_resource_routes(self):
         calls = []
