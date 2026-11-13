@@ -43,8 +43,31 @@ for rail in channel["networks"]:
 
 feed = paymos.payment_channel_deposits.read(cursor=saved_cursor, limit=100)
 for deposit in feed["items"]:
-    credit(deposit)
+    credit_deposit(deposit)  # one credit per deposit["id"], see below
 save_cursor(feed["next_cursor"])
+```
+
+The feed and the deposit webhook report the same deposits, so both go through one
+`credit_deposit` keyed by the deposit's own `id` (`pcd_...`). A sketch with a SQL store
+(`credited_deposits.deposit_id` is the primary key; PostgreSQL syntax):
+
+```python
+def credit_deposit(deposit):
+    if not deposit["is_final"] or deposit["project_id"] != MY_PROJECT_ID or deposit["is_test"] != MY_IS_TEST:
+        return
+    with db.transaction() as tx:
+        # The insert and the balance update commit together or not at all. A second
+        # delivery, a second endpoint's copy, or a re-read feed page inserts nothing.
+        inserted = tx.execute(
+            "INSERT INTO credited_deposits (deposit_id, payer, amount) VALUES (%s, %s, %s::numeric)"
+            " ON CONFLICT (deposit_id) DO NOTHING",
+            (deposit["id"], deposit["payment_channel_external_id"], deposit["net"]),
+        )
+        if inserted.rowcount == 1:
+            tx.execute(
+                "UPDATE balances SET amount = amount + %s::numeric WHERE payer = %s",
+                (deposit["net"], deposit["payment_channel_external_id"]),
+            )
 ```
 
 Four things that bite a caller who guesses. Repeating the same `external_id`
@@ -62,7 +85,11 @@ and leaves reconciliation silently behind. `confirmed_from` is the first poll's
 lower bound only; afterwards the stored cursor is the resume mechanism.
 
 API failures raise typed subclasses of `ApiError` and preserve the HTTP status,
-problem details, field, error code, headers, and `Retry-After` value.
+problem details, field, error code, headers, and `Retry-After` value. The default
+transport does not follow redirects: a signed request is sent only to `base_url`, and a
+`3xx` answer raises `ApiError` with that status. `timeout` (seconds, default 30) bounds each
+blocking socket operation — connecting and every read — not the whole request: a server that keeps
+sending slowly can make one attempt last longer than `timeout`. Retries add their own attempts.
 
 Verify webhooks against the exact raw request body before parsing it:
 
@@ -86,8 +113,16 @@ from paymos import PaymentChannelDeposit
 if event["event_type"] == "payment_channel.deposit.confirmed":
     deposit = cast(PaymentChannelDeposit, event["data"])
     if deposit["is_final"]:
-        credit(deposit["payment_channel_external_id"], deposit["net"])  # idempotent by event["event_id"]
+        credit_deposit(deposit)  # once per deposit["id"], shared with the feed
 ```
+
+`event["event_id"]` identifies one delivery, not one payment. Paymos creates a separate
+event, with its own `event_id`, for every webhook endpoint subscribed to the event, and
+every later event about the same invoice or deposit has its own `event_id` too. Store
+`event_id` to skip a redelivered request, but key money and fulfilment on the business
+identity: the invoice/order (`data["invoice_id"]`, `data["order"]["external_id"]`) for
+invoice events, the deposit `id` for deposit events. Write that key in the same database
+transaction as the order or balance change.
 
 `confirming` and `reorged` are advisory and may arrive out of order — a `confirming` can
 land after the `confirmed` for the same deposit, and a `reorged` can be superseded by a

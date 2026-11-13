@@ -5,10 +5,11 @@ import random
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from http.client import HTTPMessage
+from typing import IO, Any, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import BaseHandler, HTTPRedirectHandler, OpenerDirector, Request, build_opener
 
 from .errors import ConfigurationError, PaymosError, api_error
 from .models import (
@@ -48,12 +49,34 @@ class Transport(Protocol):
     ) -> Response: ...
 
 
+class _RejectRedirects(HTTPRedirectHandler):
+    """Return a 3xx to the caller instead of following it.
+
+    urllib's default redirect handler re-sends the request headers, the signed
+    Authorization header included, to whatever URL the Location header names, and
+    accepts an https -> http downgrade. The base URL check in _validate_base_url only
+    holds if the request never leaves that URL, so a redirect surfaces as an API error.
+    """
+
+    def redirect_request(
+        self, req: Request, fp: IO[bytes], code: int, msg: str, headers: HTTPMessage, newurl: str
+    ) -> Request | None:
+        return None
+
+
+def _build_opener(*handlers: BaseHandler) -> OpenerDirector:
+    return build_opener(_RejectRedirects, *handlers)
+
+
+_OPENER = _build_opener()
+
+
 def _default_transport(
     method: str, url: str, headers: Mapping[str, str], body: bytes | None, timeout: float
 ) -> Response:
     request = Request(url, data=body, headers=dict(headers), method=method)
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with _OPENER.open(request, timeout=timeout) as response:
             return Response(response.status, response.read().decode("utf-8"), dict(response.headers.items()))
     except HTTPError as error:
         return Response(error.code, error.read().decode("utf-8"), dict(error.headers.items()))
@@ -77,6 +100,13 @@ def _validate_base_url(value: str) -> str:
 
 
 class Paymos:
+    """Paymos API client.
+
+    ``timeout`` (seconds) is passed to ``urllib`` and bounds each blocking socket operation of the default
+    transport — connecting and every read — not the whole request; a slow, steady response can make one
+    attempt last longer. ``max_retries`` adds further attempts on retryable answers.
+    """
+
     def __init__(
         self,
         api_key: str,

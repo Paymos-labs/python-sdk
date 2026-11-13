@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-13
+
+- fix(sdk): Go refunds do not follow redirects; Python timeout semantics documented
+- fix(plugins,publicweb): SDK webhook credit recipes, CMS recovery, redirects and CSP logs (audit 2026-11-13)
+- docs(sdk): backfill published mirror changelogs across SDKs and MCP
+
 ## [1.6.0] - 2026-11-03
 
 - fix(sdk): resolve preflight lint and conformance vector count for autorelease
