@@ -17,6 +17,7 @@ from .models import (
     Invoice,
     InvoiceListItem,
     InvoicePage,
+    InvoiceProduct,
     InvoiceStatus,
     PaymentChannel,
     PaymentChannelDeposit,
@@ -194,6 +195,7 @@ class Invoices:
         network: str | None = None,
         customer_fee_percent: int | None = None,
         client_id: str | None = None,
+        products: Sequence[InvoiceProduct] | None = None,
     ) -> Invoice:
         payload: dict[str, object] = {
             "project_id": project_id,
@@ -204,6 +206,8 @@ class Invoices:
         _optional(payload, "network", network)
         _optional(payload, "customer_fee_percent", customer_fee_percent)
         _optional(payload, "client_id", client_id)
+        if products is not None:
+            payload["products"] = [_serialize_product(item) for item in products]
         return cast(Invoice, self.client.request("POST", "/v1/invoices", payload))
 
     def get(self, invoice_id: str) -> Invoice:
@@ -604,6 +608,17 @@ class System:
 def _optional(target: dict[str, object], key: str, value: object | None) -> None:
     if value is not None:
         target[key] = value
+
+
+def _serialize_product(item: InvoiceProduct) -> dict[str, object]:
+    product: dict[str, object] = {
+        "title": item["title"],
+        "quantity": item["quantity"],
+        "unit_amount": item["unit_amount"],
+    }
+    _optional(product, "description", item.get("description"))
+    _optional(product, "image_url", item.get("image_url"))
+    return product
 
 
 def _filters(**values: object | None) -> dict[str, object]:

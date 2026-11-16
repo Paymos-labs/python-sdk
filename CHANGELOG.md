@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-16
+
+- docs(sdk,drupal): document invoice products[] and update OpenAPI snapshot
+- feat(sdk): support invoice products in TypeScript and Python SDKs (7.2)
+- feat(sdk): add products wire conformance fixtures (7.1)
+
 ## [1.6.1] - 2026-11-13
 
 - fix(sdk): Go refunds do not follow redirects; Python timeout semantics documented

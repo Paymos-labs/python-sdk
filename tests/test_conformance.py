@@ -7,6 +7,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src"))
 
 from paymos import (
     VERSION,
+    InvoiceProduct,
+    InvoiceProductRequired,
     Paymos,
     PaymosError,
     RateLimitError,
@@ -17,6 +19,7 @@ from paymos import (
     build_query,
 )
 from paymos.errors import api_error
+from paymos.models import Order
 
 CONTRACT = json.loads((pathlib.Path(__file__).parents[1] / "conformance" / "contract.json").read_text())
 
@@ -210,6 +213,109 @@ class ConformanceTests(unittest.TestCase):
             build_query({"limit": 1.5})
         with self.assertRaises(ValueError):
             build_query({"limit": True})
+
+    def test_invoice_products_model_exports_and_wire_conformance(self):
+        self.assertEqual({"title", "quantity", "unit_amount"}, InvoiceProductRequired.__required_keys__)
+        self.assertEqual({"title", "quantity", "unit_amount"}, InvoiceProduct.__required_keys__)
+        self.assertTrue({"description", "image_url"}.issubset(InvoiceProduct.__optional_keys__))
+        self.assertIn("products", Order.__optional_keys__)
+
+        vectors = CONTRACT["vectors"]["invoices"]
+        responses = [
+            Response(201, json.dumps(vectors["create_single_product"]["response"]), {}),
+            Response(201, json.dumps(vectors["create_multi_product"]["response"]), {}),
+            Response(201, json.dumps(vectors["create_multi_product"]["response"]), {}),
+            Response(201, json.dumps(vectors["legacy_without_products"]["response"]), {}),
+            Response(201, json.dumps(vectors["null_products"]["response"]), {}),
+        ]
+        captured_bodies = []
+
+        def transport(method, url, headers, body, timeout):
+            captured_bodies.append(json.loads(body.decode("utf-8")) if body else None)
+            return responses.pop(0)
+
+        client = Paymos("pk_test_key", "sk_test_secret", transport=transport, max_retries=0, clock=lambda: 1700000000)
+
+        single_body = vectors["create_single_product"]["body"]
+        single_products: list[InvoiceProduct] = [
+            {
+                "title": "Studio Pro",
+                "description": "One-month access",
+                "image_url": "https://shop.example/images/studio-pro.webp",
+                "quantity": 2,
+                "unit_amount": "24.50",
+            }
+        ]
+        single_invoice = client.invoices.create(
+            project_id=single_body["project_id"],
+            amount=single_body["amount"],
+            currency=single_body["currency"],
+            external_order_id=single_body["external_order_id"],
+            products=single_products,
+        )
+        self.assertEqual(single_body, captured_bodies[0])
+        self.assertEqual(
+            vectors["create_single_product"]["response"]["order"]["products"],
+            single_invoice["order"]["products"],
+        )
+
+        multi_body = vectors["create_multi_product"]["body"]
+        multi_invoice = client.invoices.create(
+            project_id=multi_body["project_id"],
+            amount=multi_body["amount"],
+            currency=multi_body["currency"],
+            external_order_id=multi_body["external_order_id"],
+            products=[
+                single_products[0],
+                {"title": "Priority Support", "quantity": 1, "unit_amount": "12.00"},
+            ],
+        )
+        self.assertEqual(multi_body, captured_bodies[1])
+        self.assertEqual(
+            vectors["create_multi_product"]["response"]["order"]["products"],
+            multi_invoice["order"]["products"],
+        )
+
+        nullable_item: InvoiceProduct = {
+            "title": "Priority Support",
+            "description": None,
+            "image_url": None,
+            "quantity": 1,
+            "unit_amount": "12.00",
+        }
+        client.invoices.create(
+            project_id=multi_body["project_id"],
+            amount=multi_body["amount"],
+            currency=multi_body["currency"],
+            external_order_id=multi_body["external_order_id"],
+            products=[single_products[0], nullable_item],
+        )
+        self.assertEqual(multi_body, captured_bodies[2])
+        self.assertEqual({"title", "quantity", "unit_amount"}, set(captured_bodies[2]["products"][1].keys()))
+        self.assertIsNone(nullable_item["description"])
+        self.assertIsNone(nullable_item["image_url"])
+
+        legacy_body = vectors["legacy_without_products"]["body"]
+        legacy_invoice = client.invoices.create(
+            project_id=legacy_body["project_id"],
+            amount=legacy_body["amount"],
+            currency=legacy_body["currency"],
+            external_order_id=legacy_body["external_order_id"],
+        )
+        self.assertEqual(legacy_body, captured_bodies[3])
+        self.assertNotIn("products", captured_bodies[3])
+        self.assertNotIn("products", legacy_invoice["order"])
+
+        null_body = vectors["null_products"]["body"]
+        null_invoice = client.invoices.create(
+            project_id=null_body["project_id"],
+            amount=null_body["amount"],
+            currency=null_body["currency"],
+            external_order_id=null_body["external_order_id"],
+            products=None,
+        )
+        self.assertNotIn("products", captured_bodies[4])
+        self.assertNotIn("products", null_invoice["order"])
 
 
 if __name__ == "__main__":

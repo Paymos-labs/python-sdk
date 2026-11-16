@@ -13,19 +13,66 @@ pip install paymos-sdk
 ```python
 import os
 
-from paymos import Paymos
+from paymos import InvoiceProduct, Paymos
 
 paymos = Paymos(
     api_key=os.environ["PAYMOS_API_KEY"],
     api_secret=os.environ["PAYMOS_API_SECRET"],
 )
+
+# Compatible amount-only call (products omitted or None)
 invoice = paymos.invoices.create(
-    project_id="prj_...", amount="10.00", currency="USD",
+    project_id="prj_...",
+    amount="10.00",
+    currency="USD",
     external_order_id="order_123",
 )
 ```
 
-Use decimal strings for money. `list()` returns one cursor page; `iterate()`
+Use decimal strings for money.
+
+### Product line items (`products[]`)
+
+Pass an optional sequence of `InvoiceProduct` dicts (`1..50` items) via `products` to show line items on hosted checkout, or omit `products` / pass `products=None` for a compatible `amount-only` invoice. Each item requires `title` (<= 200 Unicode scalar values), positive int32 `quantity`, and decimal string `unit_amount` (in the invoice currency); `description` (plain text, <= 2000 scalars) and `image_url` (HTTPS URL, <= 2048 scalars) are optional nullable fields and are omitted on the wire when `None`.
+
+```python
+# 1-item invoice with optional description and image_url
+single_item: InvoiceProduct = {
+    "title": "Studio Pro",
+    "description": "One-month access",
+    "image_url": "https://shop.example/images/studio-pro.webp",
+    "quantity": 2,
+    "unit_amount": "24.50",
+}
+single_invoice = paymos.invoices.create(
+    project_id="prj_...",
+    amount="47.00",
+    currency="USD",
+    external_order_id="order_product_single",
+    products=[single_item],
+)
+
+# Multi-item cart including a minimal 3-field item (no description / image_url)
+cart_invoice = paymos.invoices.create(
+    project_id="prj_...",
+    amount="59.00",
+    currency="USD",
+    external_order_id="order_product_multi",
+    products=[
+        single_item,
+        {"title": "Priority Support", "quantity": 1, "unit_amount": "12.00"},
+    ],
+)
+
+for item in cart_invoice["order"].get("products", []):
+    print(item["title"], item["quantity"], item["unit_amount"], item.get("image_url"))
+```
+
+- **Authoritative `amount`:** `amount` is the exact order total and is never recomputed from `sum(quantity * unit_amount)`.
+- **First-success replay:** the first successful create locks `order["products"]` on the invoice. Retrying the same `external_order_id` with the same `(amount, currency, network)` returns HTTP 200 with the original invoice and original `order["products"]` even if `products` changed; changing `(amount, currency, network)` raises `ConflictError` (`409 invoice_idempotency_conflict`). Legacy and `amount-only` invoices omit `order["products"]`.
+- **Image/product fallback & webhooks:** invoice creation stores `image_url` without fetching it server-side; if the buyer's browser fails to load an image or an item omits `description`/`image_url`, checkout hides only the missing media/description and keeps payment active. Signed invoice webhooks omit `products`.
+
+`list()` returns one cursor page; `iterate()`
 follows cursors lazily and stops after 100 pages by default.
 
 ```python
