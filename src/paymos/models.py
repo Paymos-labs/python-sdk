@@ -55,7 +55,6 @@ class InvoiceProductRequired(TypedDict):
 
 class InvoiceProduct(InvoiceProductRequired, total=False):
     description: str | None
-    image_url: str | None
 
 
 class OrderRequired(TypedDict):

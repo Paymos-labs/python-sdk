@@ -217,7 +217,7 @@ class ConformanceTests(unittest.TestCase):
     def test_invoice_products_model_exports_and_wire_conformance(self):
         self.assertEqual({"title", "quantity", "unit_amount"}, InvoiceProductRequired.__required_keys__)
         self.assertEqual({"title", "quantity", "unit_amount"}, InvoiceProduct.__required_keys__)
-        self.assertTrue({"description", "image_url"}.issubset(InvoiceProduct.__optional_keys__))
+        self.assertEqual({"description"}, InvoiceProduct.__optional_keys__)
         self.assertIn("products", Order.__optional_keys__)
 
         vectors = CONTRACT["vectors"]["invoices"]
@@ -241,7 +241,6 @@ class ConformanceTests(unittest.TestCase):
             {
                 "title": "Studio Pro",
                 "description": "One-month access",
-                "image_url": "https://shop.example/images/studio-pro.webp",
                 "quantity": 2,
                 "unit_amount": "24.50",
             }
@@ -279,7 +278,6 @@ class ConformanceTests(unittest.TestCase):
         nullable_item: InvoiceProduct = {
             "title": "Priority Support",
             "description": None,
-            "image_url": None,
             "quantity": 1,
             "unit_amount": "12.00",
         }
@@ -293,7 +291,6 @@ class ConformanceTests(unittest.TestCase):
         self.assertEqual(multi_body, captured_bodies[2])
         self.assertEqual({"title", "quantity", "unit_amount"}, set(captured_bodies[2]["products"][1].keys()))
         self.assertIsNone(nullable_item["description"])
-        self.assertIsNone(nullable_item["image_url"])
 
         legacy_body = vectors["legacy_without_products"]["body"]
         legacy_invoice = client.invoices.create(

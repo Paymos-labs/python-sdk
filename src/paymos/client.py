@@ -617,7 +617,6 @@ def _serialize_product(item: InvoiceProduct) -> dict[str, object]:
         "unit_amount": item["unit_amount"],
     }
     _optional(product, "description", item.get("description"))
-    _optional(product, "image_url", item.get("image_url"))
     return product
 
 
