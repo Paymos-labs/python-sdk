@@ -8,7 +8,7 @@ from typing import cast
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src"))
 
-from paymos import PaymentChannelDeposit, WebhookVerifier
+from paymos import PaymentChannelDeposit, SignatureMismatchError, WebhookVerifier
 
 SECRET = "whsec_test_secret"
 
@@ -85,6 +85,23 @@ class WebhookPaymentChannelDepositTests(unittest.TestCase):
         # Absent stays absent: a native-coin deposit's optionals are missing keys, not None values.
         for key in ("contract_address", "source_address", "explorer_url", "first_included_block_timestamp"):
             self.assertNotIn(key, deposit)
+
+    def test_unicode_or_oversized_timestamp_raises_signature_mismatch_not_value_error(self):
+        verifier = WebhookVerifier(SECRET)
+        raw_body = b'{"event_id":"evt_1"}'
+        sig = "0" * 64
+        for header in (
+            f"t=\u00b2,v1={sig}",
+            f"t=\u0661\u0662\u0663,v1={sig}",
+            f"t={'9' * 5000},v1={sig}",
+            f"t=1700000000,t=\u00b2,v1={sig}",
+        ):
+            with self.subTest(header=header[:24]):
+                with self.assertRaises(SignatureMismatchError):
+                    verifier.assert_valid(header, raw_body, now=1700000000)
+                with self.assertRaises(SignatureMismatchError):
+                    verifier.construct_event(header, raw_body, now=1700000000)
+                self.assertFalse(verifier.verify(header, raw_body, now=1700000000))
 
 
 if __name__ == "__main__":

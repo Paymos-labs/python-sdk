@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-22
+
+- fix(plugins,sdk,ci): fix PrestaShop/Shopware6/CMS locale & scalar bugs, Python webhook digits, atomic mirror pushes, token redaction, and release CI reliability (BUG-1434..1437, BUG-1461..1467, BUG-1478..1481)
+
 ## [1.7.1] - 2026-11-17
 
 - refactor(checkout): remove product images from invoice products

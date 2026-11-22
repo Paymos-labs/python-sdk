@@ -1,6 +1,6 @@
 {
   "source_repository": "Paymos-labs/paymos",
   "source_path": "plugins/python-sdk",
-  "source_commit": "6a0de0c7cca98de55db31e96f4b0b247a1e07509",
-  "version": "1.7.1"
+  "source_commit": "c2180ade0bd4c6a0dd149a4291e342102d8a5a9d",
+  "version": "1.7.2"
 }

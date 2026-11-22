@@ -53,8 +53,13 @@ class WebhookVerifier:
         signatures: list[str] = []
         for part in str(header).split(","):
             key, separator, value = part.strip().partition("=")
-            if separator and key == "t" and value.isdigit():
-                timestamp = int(value)
+            if separator and key == "t":
+                if not value.isascii() or not value.isdigit():
+                    raise SignatureMismatchError("Webhook signature header is missing or malformed.")
+                try:
+                    timestamp = int(value)
+                except ValueError as exc:
+                    raise SignatureMismatchError("Webhook signature header is missing or malformed.") from exc
                 timestamp_count += 1
             elif separator and key == "v1" and value:
                 signatures.append(value)
